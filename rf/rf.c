@@ -3,34 +3,32 @@
 #include "hardware/gpio.h"
 #include "pico/binary_info.h"
 #include "pico/platform.h"
-// Inital
-const uint LED_PIN = 25;
-const uint CLK_PIN = 21;
-const uint DATA_PIN = 20;
-const uint BUTTON_PIN = 19;
 
-//There is quite a number of functions available for this board, however we only need a few for basic operation.
-#define XBOX_SYNC 		0x004	//Tell the RF module to sync with external controllers, and play the sync animation on the LEDs
-#define XBOX_BOOTANIM	0x085	//Initalize the LEDs and play the Xbox 360 'power on' animation on the LEDs. An 'init' function (which this instruction is) must be run before the LEDs can be used.
-#define XBOX_GREEN_ALL	0x0AF	//Turn on all green LEDs
+// Pin definitions
+const uint LED_PIN = 25; // On-board LED
+const uint CLK_PIN = 21; // Clock line for the RF module
+const uint DATA_PIN = 20; // Data line for the RF module
+const uint BUTTON_PIN = 19; // Button to trigger sync function
+
+int start_cmd[10] = {0,0,0,0,0,1,0,0,1,0}; //Start Module (Needed for the sync led animation)
+int power_cmd[10] = {0,0,1,0,0,0,0,1,0,1}; //Makes the startup animation on the ring of light.
+int sync_cmd[11] = {0,0,0,0,0,0,0,1,0,0,1}; //Initiates the sync process.
 
 
-void send_to_rf(uint16_t data) {
+
+void send_to_rf(int data[],int size) {
     // Bring the data pin low
     gpio_put(DATA_PIN, 0);
     // Send the data
     uint8_t index = 0;
-    while(index < 10) 
-    {
-        while(gpio_get(CLK_PIN) != 0) {;} //Wait for clock line to go low
-        // Send the data bit
-        if((data & (0x200 >> index)) == 0) {
-            gpio_put(DATA_PIN, 0);
-        } else {
-            gpio_put(DATA_PIN, 1);
-        }
-        while(gpio_get(CLK_PIN) == 0) {;} //Wait for clock line to go high
-        index++;
+    int prev = 1;
+    for(int i = 0; i < size; i++) {
+    while(gpio_get(CLK_PIN) == prev) {;}
+    prev = gpio_get(CLK_PIN);
+    sleep_us(1000);
+    gpio_put(DATA_PIN, data[i]);
+    while(gpio_get(CLK_PIN) == prev) {;}
+    prev = gpio_get(CLK_PIN);
     }
     // Bring the data pin high
     gpio_put(DATA_PIN, 1);
@@ -55,16 +53,21 @@ int main() {
     gpio_init(BUTTON_PIN);
     gpio_set_dir(BUTTON_PIN, GPIO_IN);
 
+    
+
     sleep_ms(3000);
-    send_to_rf(XBOX_BOOTANIM);
+    send_to_rf(start_cmd,10);
+    sleep_ms(100);
+    send_to_rf(power_cmd,10);
+    sleep_ms(100);
 
     while (1) {
         if (gpio_get(BUTTON_PIN) == 0) {
-            gpio_put(LED_PIN, 1);
-            send_to_rf(XBOX_SYNC);
-            sleep_ms(5000);
-        } else {
             gpio_put(LED_PIN, 0);
+           // send_to_rf(XBOX_SYNC);
+           // sleep_ms(5000);
+        } else {
+            gpio_put(LED_PIN, 1);
         }
     }
 }
